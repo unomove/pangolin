@@ -24,21 +24,20 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
  */
-
 #include <array>
 #include <pangolin/factory/factory_registry.h>
 #include <pangolin/video/iostream_operators.h>
 #include <pangolin/utils/file_utils.h>
 #include <pangolin/video/drivers/ffmpeg.h>
-
 // Some versions of FFMPEG define this horrid macro in global scope.
 #undef PixelFormat
-
 extern "C"
 {
 #include <libavformat/avio.h>
 #include <libavutil/mathematics.h>
 }
+
+#define CODEC_FLAG_GLOBAL_HEADER AV_CODEC_FLAG_GLOBAL_HEADER
 
 namespace pangolin
 {
@@ -50,7 +49,6 @@ namespace pangolin
 #  define AV_PIX_FMT_GRAY8 PIX_FMT_GRAY8
 #  define TEST_PIX_FMT_RETURN(fmt) case PIX_FMT_##fmt: return #fmt;
 #endif
-
 AVPixelFormat FfmpegFmtFromString(const std::string fmt)
 {
     const std::string lfmt = ToLowerCopy(fmt);
@@ -59,8 +57,6 @@ AVPixelFormat FfmpegFmtFromString(const std::string fmt)
     }
     return av_get_pix_fmt(lfmt.c_str());
 }
-
-
 std::string FfmpegFmtToString(const AVPixelFormat fmt)
 {
     switch( fmt )
@@ -80,8 +76,10 @@ std::string FfmpegFmtToString(const AVPixelFormat fmt)
     TEST_PIX_FMT_RETURN(YUVJ420P);
     TEST_PIX_FMT_RETURN(YUVJ422P);
     TEST_PIX_FMT_RETURN(YUVJ444P);
+#ifdef FF_API_XVMC
     TEST_PIX_FMT_RETURN(XVMC_MPEG2_MC);
     TEST_PIX_FMT_RETURN(XVMC_MPEG2_IDCT);
+#endif
     TEST_PIX_FMT_RETURN(UYVY422);
     TEST_PIX_FMT_RETURN(UYYVYY411);
     TEST_PIX_FMT_RETURN(BGR8);
@@ -101,11 +99,13 @@ std::string FfmpegFmtToString(const AVPixelFormat fmt)
     TEST_PIX_FMT_RETURN(YUV440P);
     TEST_PIX_FMT_RETURN(YUVJ440P);
     TEST_PIX_FMT_RETURN(YUVA420P);
+#ifdef FF_API_VDPAU
     TEST_PIX_FMT_RETURN(VDPAU_H264);
     TEST_PIX_FMT_RETURN(VDPAU_MPEG1);
     TEST_PIX_FMT_RETURN(VDPAU_MPEG2);
     TEST_PIX_FMT_RETURN(VDPAU_WMV3);
     TEST_PIX_FMT_RETURN(VDPAU_VC1);
+#endif
     TEST_PIX_FMT_RETURN(RGB48BE );
     TEST_PIX_FMT_RETURN(RGB48LE );
     TEST_PIX_FMT_RETURN(RGB565BE);
@@ -125,7 +125,9 @@ std::string FfmpegFmtToString(const AVPixelFormat fmt)
     TEST_PIX_FMT_RETURN(YUV422P16BE);
     TEST_PIX_FMT_RETURN(YUV444P16LE);
     TEST_PIX_FMT_RETURN(YUV444P16BE);
+#ifdef FF_API_VDPAU
     TEST_PIX_FMT_RETURN(VDPAU_MPEG4);
+#endif
     TEST_PIX_FMT_RETURN(DXVA2_VLD);
     TEST_PIX_FMT_RETURN(RGB444BE);
     TEST_PIX_FMT_RETURN(RGB444LE);
@@ -136,15 +138,12 @@ std::string FfmpegFmtToString(const AVPixelFormat fmt)
     default: return "";
     }
 }
-
 #undef TEST_PIX_FMT_RETURN
-
 FfmpegVideo::FfmpegVideo(const std::string filename, const std::string strfmtout, const std::string codec_hint, bool dump_info, int user_video_stream)
     :pFormatCtx(0)
 {
     InitUrl(filename, strfmtout, codec_hint, dump_info, user_video_stream);
 }
-
 void FfmpegVideo::InitUrl(const std::string url, const std::string strfmtout, const std::string codec_hint, bool dump_info, int user_video_stream)
 {
     if( url.find('*') != url.npos )
@@ -283,7 +282,6 @@ void FfmpegVideo::InitUrl(const std::string url, const std::string strfmtout, co
     const StreamInfo stream(strm_fmt, w, h, (w*strm_fmt.bpp)/8, 0);
     streams.push_back(stream);
 }
-
 FfmpegVideo::~FfmpegVideo()
 {
     // Free the RGB image
@@ -307,25 +305,20 @@ FfmpegVideo::~FfmpegVideo()
     // Free pixel conversion context
     sws_freeContext(img_convert_ctx);
 }
-
 const std::vector<StreamInfo>& FfmpegVideo::Streams() const
 {
     return streams;
 }
-
 size_t FfmpegVideo::SizeBytes() const
 {
     return numBytesOut;
 }
-
 void FfmpegVideo::Start()
 {
 }
-
 void FfmpegVideo::Stop()
 {
 }
-
 bool FfmpegVideo::GrabNext(unsigned char* image, bool /*wait*/)
 {
     int gotFrame = 0;
@@ -351,12 +344,10 @@ bool FfmpegVideo::GrabNext(unsigned char* image, bool /*wait*/)
     
     return gotFrame;
 }
-
 bool FfmpegVideo::GrabNewest(unsigned char *image, bool wait)
 {
     return GrabNext(image,wait);
 }
-
 void FfmpegConverter::ConvertContext::convert(const unsigned char* src, unsigned char* dst)
 {
     // avpicture_fill expects uint8_t* w/o const as the second parameter in earlier versions
@@ -366,7 +357,6 @@ void FfmpegConverter::ConvertContext::convert(const unsigned char* src, unsigned
                 avsrc->data, avsrc->linesize, 0, h,
                 avdst->data, avdst->linesize         );
 }
-
 FfmpegConverter::FfmpegConverter(std::unique_ptr<VideoInterface> &videoin_, const std::string sfmtdst, FfmpegMethod method )
     :videoin(std::move(videoin_))
 {
@@ -418,7 +408,6 @@ FfmpegConverter::FfmpegConverter(std::unique_ptr<VideoInterface> &videoin_, cons
     }
     
 }
-
 FfmpegConverter::~FfmpegConverter()
 {
     for(ConvertContext&c:converters)
@@ -427,27 +416,22 @@ FfmpegConverter::~FfmpegConverter()
         av_free(c.avdst);
     }
 }
-
 void FfmpegConverter::Start()
 {
     // No-Op
 }
-
 void FfmpegConverter::Stop()
 {
     // No-Op
 }
-
 size_t FfmpegConverter::SizeBytes() const
 {
     return dst_buffer_size;
 }
-
 const std::vector<StreamInfo>& FfmpegConverter::Streams() const
 {
     return streams;
 }
-
 bool FfmpegConverter::GrabNext( unsigned char* image, bool wait )
 {
     if( videoin->GrabNext(input_buffer.get(),wait) )
@@ -459,7 +443,6 @@ bool FfmpegConverter::GrabNext( unsigned char* image, bool wait )
     }
     return false;
 }
-
 bool FfmpegConverter::GrabNewest( unsigned char* image, bool wait )
 {
     if( videoin->GrabNewest(input_buffer.get(),wait) )
@@ -471,7 +454,6 @@ bool FfmpegConverter::GrabNewest( unsigned char* image, bool wait )
     }
     return false;
 }
-
 // Based on this example
 // http://cekirdek.pardus.org.tr/~ismail/ffmpeg-docs/output-example_8c-source.html
 static AVStream* CreateStream(AVFormatContext *oc, CodecID codec_id, uint64_t frame_rate, int bit_rate, AVPixelFormat EncoderFormat, int width, int height)
@@ -479,7 +461,6 @@ static AVStream* CreateStream(AVFormatContext *oc, CodecID codec_id, uint64_t fr
     AVCodec* codec = avcodec_find_encoder(codec_id);
     if (!(codec)) throw
         VideoException("Could not find encoder");
-
 #if (LIBAVFORMAT_VERSION_MAJOR >= 54 || (LIBAVFORMAT_VERSION_MAJOR >= 53 && LIBAVFORMAT_VERSION_MINOR >= 21) )
     AVStream* stream = avformat_new_stream(oc, codec);
 #else
@@ -524,40 +505,30 @@ static AVStream* CreateStream(AVFormatContext *oc, CodecID codec_id, uint64_t fr
     
     return stream;
 }
-
 class FfmpegVideoOutputStream
 {
 public:
     FfmpegVideoOutputStream(FfmpegVideoOutput& recorder, CodecID codec_id, uint64_t frame_rate, int bit_rate, const StreamInfo& input_info );
     ~FfmpegVideoOutputStream();
-
     const StreamInfo& GetStreamInfo() const;
-
     void WriteImage(const uint8_t* img, int w, int h, double time);
-
 protected:
     void WriteAvPacket(AVPacket* pkt);
     void WriteFrame(AVFrame* frame);
     double BaseFrameTime();
-
     FfmpegVideoOutput& recorder;
-
     StreamInfo input_info;
     AVPixelFormat input_format;
     AVPixelFormat output_format;
-
     AVPicture src_picture;
     AVPicture dst_picture;
     int64_t last_pts;
-
     // These pointers are owned by class
     AVStream* stream;
     SwsContext *sws_ctx;
     AVFrame* frame;
-
     bool flip;
 };
-
 void FfmpegVideoOutputStream::WriteAvPacket(AVPacket* pkt)
 {
     if (pkt->size) {
@@ -567,17 +538,16 @@ void FfmpegVideoOutputStream::WriteAvPacket(AVPacket* pkt)
         if(pkt->pts != (int64_t)AV_NOPTS_VALUE) last_pts = pkt->pts;
     }
 }
-
 void FfmpegVideoOutputStream::WriteFrame(AVFrame* frame)
 {
     AVPacket pkt;
     pkt.data = NULL;
     pkt.size = 0;
     av_init_packet(&pkt);
-
     int ret;
     int got_packet = 1;
 
+#if FF_API_LAVF_FMT_RAWPICTURE
     // Setup AVPacket
     if (recorder.oc->oformat->flags & AVFMT_RAWPICTURE) {
         /* Raw video case - directly store the picture in the packet */
@@ -587,6 +557,9 @@ void FfmpegVideoOutputStream::WriteFrame(AVFrame* frame)
         pkt.pts           = frame->pts;
         ret = 0;
     } else {
+#else
+    {
+#endif
         /* encode the image */
 #if (LIBAVFORMAT_VERSION_MAJOR >= 54)
         ret = avcodec_encode_video2(stream->codec, &pkt, frame, &got_packet);
@@ -610,15 +583,11 @@ void FfmpegVideoOutputStream::WriteFrame(AVFrame* frame)
     
     av_free_packet(&pkt);
 }
-
 void FfmpegVideoOutputStream::WriteImage(const uint8_t* img, int w, int h, double time=-1.0)
 {
     const int64_t pts = (time >= 0) ? time / BaseFrameTime() : ++last_pts;
-
     recorder.StartStream();
-
     AVCodecContext *c = stream->codec;
-
     if(flip) {
         // Earlier versions of ffmpeg do not annotate img as const, although it is
         avpicture_fill(&src_picture,const_cast<uint8_t*>(img),input_format,w,h);
@@ -630,7 +599,6 @@ void FfmpegVideoOutputStream::WriteImage(const uint8_t* img, int w, int h, doubl
         // Earlier versions of ffmpeg do not annotate img as const, although it is
         avpicture_fill(&src_picture,const_cast<uint8_t*>(img),input_format,w,h);
     }
-
     if (c->pix_fmt != input_format || c->width != w || c->height != h) {
         if(!sws_ctx) {
             sws_ctx = sws_getCachedContext( sws_ctx,
@@ -648,23 +616,19 @@ void FfmpegVideoOutputStream::WriteImage(const uint8_t* img, int w, int h, doubl
     } else {
         *((AVPicture *)frame) = src_picture;
     }
-
     frame->pts = pts;
     frame->width =  w;
     frame->height = h;
     WriteFrame(frame);
 }
-
 const StreamInfo& FfmpegVideoOutputStream::GetStreamInfo() const
 {
     return input_info;
 }
-
 double FfmpegVideoOutputStream::BaseFrameTime()
 {
     return (double)stream->codec->time_base.num / (double)stream->codec->time_base.den;
 }
-
 FfmpegVideoOutputStream::FfmpegVideoOutputStream(
     FfmpegVideoOutput& recorder, CodecID codec_id, uint64_t frame_rate,
     int bit_rate, const StreamInfo& input_info
@@ -679,7 +643,6 @@ FfmpegVideoOutputStream::FfmpegVideoOutputStream(
     // Allocate the encoded raw picture.
     int ret = avpicture_alloc(&dst_picture, stream->codec->pix_fmt, stream->codec->width, stream->codec->height);
     if (ret < 0) throw VideoException("Could not allocate picture");
-
     // Allocate frame
 #if LIBAVUTIL_VERSION_MAJOR >= 54
     frame = av_frame_alloc();
@@ -688,7 +651,6 @@ FfmpegVideoOutputStream::FfmpegVideoOutputStream(
     frame = avcodec_alloc_frame();
 #endif
 }
-
 FfmpegVideoOutputStream::~FfmpegVideoOutputStream()
 {
     if(sws_ctx) {
@@ -699,28 +661,23 @@ FfmpegVideoOutputStream::~FfmpegVideoOutputStream()
     av_free(dst_picture.data[0]);
     avcodec_close(stream->codec);
 }
-
 FfmpegVideoOutput::FfmpegVideoOutput(const std::string& filename, int base_frame_rate, int bit_rate)
     : filename(filename), started(false), oc(NULL),
       frame_count(0), base_frame_rate(base_frame_rate), bit_rate(bit_rate), is_pipe(pangolin::IsPipe(filename))
 {
     Initialise(filename);
 }
-
 FfmpegVideoOutput::~FfmpegVideoOutput()
 {
     Close();
 }
-
 bool FfmpegVideoOutput::IsPipe() const
 {
     return is_pipe;
 }
-
 void FfmpegVideoOutput::Initialise(std::string filename)
 {
     av_register_all();
-
 #ifdef HAVE_FFMPEG_AVFORMAT_ALLOC_OUTPUT_CONTEXT2
     int ret = avformat_alloc_output_context2(&oc, NULL, NULL, filename.c_str());
 #else
@@ -728,7 +685,6 @@ void FfmpegVideoOutput::Initialise(std::string filename)
     oc->oformat = av_guess_format(NULL, filename.c_str(), NULL);
     int ret = oc->oformat ? 0 : -1;
 #endif
-
     if (ret < 0 || !oc) {
         pango_print_error("Could not deduce output format from file extension: using MPEG.\n");
 #ifdef HAVE_FFMPEG_AVFORMAT_ALLOC_OUTPUT_CONTEXT2
@@ -745,7 +701,6 @@ void FfmpegVideoOutput::Initialise(std::string filename)
         if (ret < 0) throw VideoException("Could not open '%s'\n", filename);
     }    
 }
-
 void FfmpegVideoOutput::StartStream()
 {
     if(!started) {
@@ -763,7 +718,6 @@ void FfmpegVideoOutput::StartStream()
         started = true;
     }
 }
-
 void FfmpegVideoOutput::Close()
 {
     av_write_trailer(oc);
@@ -774,31 +728,25 @@ void FfmpegVideoOutput::Close()
     }
     
     if (!(oc->oformat->flags & AVFMT_NOFILE)) avio_close(oc->pb);
-
     avformat_free_context(oc);
 }
-
 const std::vector<StreamInfo>& FfmpegVideoOutput::Streams() const
 {
     return strs;
 }
-
 void FfmpegVideoOutput::SetStreams(const std::vector<StreamInfo>& str, const std::string& /*uri*/, const picojson::value& properties)
 {
     strs.insert(strs.end(), str.begin(), str.end());
-
     for(std::vector<StreamInfo>::const_iterator i = str.begin(); i!= str.end(); ++i)
     {
         streams.push_back( new FfmpegVideoOutputStream(
             *this, oc->oformat->video_codec, base_frame_rate, bit_rate, *i
         ) );
     }
-
     if(!properties.is<picojson::null>()) {
         pango_print_warn("Ignoring attached video properties.");
     }
 }
-
 int FfmpegVideoOutput::WriteStreams(const unsigned char* data, const picojson::value& /*frame_properties*/)
 {
     for(std::vector<FfmpegVideoOutputStream*>::iterator i = streams.begin(); i!= streams.end(); ++i)
@@ -809,7 +757,6 @@ int FfmpegVideoOutput::WriteStreams(const unsigned char* data, const picojson::v
     }
     return frame_count++;
 }
-
 PANGOLIN_REGISTER_FACTORY(FfmpegVideo)
 {
     struct FfmpegVideoFactory : public FactoryInterface<VideoInterface> {
@@ -821,7 +768,6 @@ PANGOLIN_REGISTER_FACTORY(FfmpegVideo)
                 ".m2v", ".mxf", ".nsv",  ".ogv", ".ogg", ".rm", ".rmvb", ".roq", ".svi", ".vob",
                 ".webm", ".wmv", ".yuv", ".h264", ".h265"
             };
-
             if(!uri.scheme.compare("ffmpeg") || !uri.scheme.compare("file") || !uri.scheme.compare("files") )
             {
                 if(!uri.scheme.compare("file") || !uri.scheme.compare("files")) {
@@ -847,7 +793,6 @@ PANGOLIN_REGISTER_FACTORY(FfmpegVideo)
             }
         }
     };
-
     auto factory = std::make_shared<FfmpegVideoFactory>();
     FactoryRegistry<VideoInterface>::I().RegisterFactory(factory, 10, "ffmpeg");
     FactoryRegistry<VideoInterface>::I().RegisterFactory(factory, 10, "mjpeg");
@@ -855,7 +800,6 @@ PANGOLIN_REGISTER_FACTORY(FfmpegVideo)
     FactoryRegistry<VideoInterface>::I().RegisterFactory(factory, 15, "file");
     FactoryRegistry<VideoInterface>::I().RegisterFactory(factory, 15, "files");
 }
-
 PANGOLIN_REGISTER_FACTORY(FfmpegVideoOutput)
 {
     struct FfmpegVideoFactory : public FactoryInterface<VideoOutputInterface> {
@@ -863,20 +807,15 @@ PANGOLIN_REGISTER_FACTORY(FfmpegVideoOutput)
             int desired_frame_rate = uri.Get("fps", 60);
             int desired_bit_rate = uri.Get("bps", 20000*1024);
             std::string filename = uri.url;
-
             if(uri.Contains("unique_filename")) {
                 filename = MakeUniqueFilename(filename);
             }
-
             return std::unique_ptr<VideoOutputInterface>(
                 new FfmpegVideoOutput(filename, desired_frame_rate, desired_bit_rate)
             );
         }
     };
-
     auto factory = std::make_shared<FfmpegVideoFactory>();
     FactoryRegistry<VideoOutputInterface>::I().RegisterFactory(factory, 10, "ffmpeg");
 }
-
 }
-
